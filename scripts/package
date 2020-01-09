@@ -6,7 +6,7 @@ source $(dirname $0)/version
 cd $(dirname $0)/..
 
 mkdir -p dist/artifacts
-cp bin/db-metrics dist/artifacts/catalodb-metrics${SUFFIX}
+cp bin/db-metrics dist/artifacts/db-metrics${SUFFIX}
 
 IMAGE=${REPO}/db-metrics:${TAG}
 DOCKERFILE=package/Dockerfile

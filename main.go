@@ -4,14 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"regexp"
-	"time"
-
-	//"github.com/go-kit/kit/util/conn"
-	//client "github.com/influxdata/influxdb1-client/v2"
 	"net/url"
 	"os"
-	//"time"
+	"regexp"
+	"time"
 
 	"db-metrics/pkg"
 	_ "github.com/influxdata/influxdb1-client" // this is important because of the bug in go mod
@@ -177,37 +173,7 @@ func subscribeToMQTT(cli *mqClient.Client, mq pkg.Mqtt, conn *influxClient.Clien
 						logrus.Errorf("failed to decode mqtt message: %s, error: %s\n", string(message), err.Error())
 						return
 					}
-
-					re := regexp.MustCompile(`[-]?\d[\d,]*[\.]?[\d{2}]*`)
-					submatchall := re.FindAllString(messageData.Result, -1)
-					if len(submatchall) < 2 {
-						logrus.Errorf("failed to sub-struct elements from string:%s, sub total len:%d.", messageData.Result, len(submatchall))
-					}
-					fmt.Println(len(submatchall))
-					fmt.Println(time.Unix(0, messageData.TimeStamp))
-					point := influxClient.Point{
-						Measurement: "temperature",
-						Tags: map[string]string{
-							"name": "temp",
-						},
-						Fields: map[string]interface{}{
-							"temperature": submatchall[0],
-							"humid":       submatchall[1],
-						},
-						Time:      time.Unix(0, messageData.TimeStamp),
-						Precision: "ns",
-					}
-
-					bps := influxClient.BatchPoints{
-						Points:          []influxClient.Point{point},
-						Database:        "mydb",
-						RetentionPolicy: "autogen",
-					}
-					_, err = conn.Write(bps)
-					if err != nil {
-						logrus.Errorf("failed to write to influxDB with err: %s", err.Error())
-					}
-					logrus.Infof("success write data into the influxDB")
+					writeToDB(messageData, conn)
 				},
 			},
 		},
@@ -218,68 +184,35 @@ func subscribeToMQTT(cli *mqClient.Client, mq pkg.Mqtt, conn *influxClient.Clien
 	return nil
 }
 
-//func writeToDB(client *influxClient.Client, mqClient *mqClient.Client, mq pkg.Mqtt) error {
-//	size := len(repo.Results)
-//	pts := make([]influxClient.Point, size)
-//
-//	dbConfig := getInfluxDBConfig()
-//	logrus.Debugf("write data to the influxDB: %+v", repo.Results)
-//	for i := 0; i < size; i++ {
-//		repo := repo.Results[i]
-//		pts[i] = influxClient.Point{
-//			Measurement: dbConfig.Measure,
-//			Tags: map[string]string{
-//				"name":      repo.Name,
-//				"namespace": repo.Namespace,
-//			},
-//			Fields: map[string]interface{}{
-//				"user":            repo.User,
-//				"repository_type": repo.RepositoryType,
-//				"status":          repo.Status,
-//				"description":     repo.Description,
-//				"is_private":      repo.IsPrivate,
-//				"is_automated":    repo.IsAutomated,
-//				"can_edit":        repo.CanEdit,
-//				"star_count":      repo.StarCount,
-//				"pull_count":      repo.PullCount,
-//				"last_updated":    repo.LastUpdated,
-//				"is_migrated":     repo.IsMigrated,
-//			},
-//			Time:      time.Now(),
-//			Precision: "h",
-//		}
-//	}
-//	bps := influxClient.BatchPoints{
-//		Points:          pts,
-//		Database:        dbConfig.DB,
-//		RetentionPolicy: "autogen",
-//	}
-//	_, err := client.Write(bps)
-//	if err != nil {
-//		return err
-//	}
-//	logrus.Infof("success write %d data into the influxDB", len(repo.Results))
-//	return nil
-//}
-
-type InfluxDBConf struct {
-	DB      string
-	Measure string
-}
-
-func getInfluxDBConfig() *InfluxDBConf {
-	var influx = &InfluxDBConf{}
-	measure := os.Getenv("INFLUXDB_MEASURE")
-	db := os.Getenv("INFLUXDB_NAME")
-
-	if len(measure) == 0 {
-		influx.Measure = "repositories"
+func writeToDB(message pkg.Message, conn *influxClient.Client) {
+	re := regexp.MustCompile(`[-]?\d[\d,]*[\.]?[\d{2}]*`)
+	submatchall := re.FindAllString(message.Result, -1)
+	if len(submatchall) < 2 {
+		logrus.Errorf("failed to sub-struct elements from string:%s, sub total len:%d.", message.Result, len(submatchall))
+	}
+	point := influxClient.Point{
+		Measurement: "temperature",
+		Tags: map[string]string{
+			"name": "temp",
+		},
+		Fields: map[string]interface{}{
+			"temperature": submatchall[0],
+			"humid":       submatchall[1],
+		},
+		Time:      time.Unix(0, message.TimeStamp),
+		Precision: "ns",
 	}
 
-	if len(db) == 0 {
-		influx.DB = "catalog"
+	bps := influxClient.BatchPoints{
+		Points:          []influxClient.Point{point},
+		Database:        "mydb",
+		RetentionPolicy: "autogen",
 	}
-	return influx
+	_, err := conn.Write(bps)
+	if err != nil {
+		logrus.Errorf("failed to write to influxDB with err: %s", err.Error())
+	}
+	logrus.Infof("success write data into the influxDB")
 }
 
 func initInfluxDB(server, username, password string, port int) (*influxDB, error) {
